@@ -1,23 +1,49 @@
-const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
-const cors = require('cors');
-const bodyParser = require('body-parser');
-const path = require('path');
+// server.js
+import express from 'express';
+import sqlite3 from 'sqlite3';
+import cors from 'cors';
+import bodyParser from 'body-parser';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
+// --- Fix __dirname for ES Modules ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// --- CORS Setup with Allowed Origins ---
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'https://iwb-liard.vercel.app',
+  'https://iwb-server.onrender.com',
+  'http://localhost:5174',
+  'http://localhost:5173',
+  'https://iwb-server.onrender.com/auth/google'
+];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "*"  // allow frontend
+  origin: function(origin, callback) {
+    if (!origin) return callback(null, true); // allow requests with no origin
+    if (!allowedOrigins.includes(origin)) {
+      const msg = `The CORS policy for this site does not allow access from the specified Origin: ${origin}`;
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE']
 }));
+
 app.use(bodyParser.json());
 
-// Persistent SQLite database
+// --- SQLite Database Setup ---
 const dbPath = path.join(__dirname, 'database.sqlite');
 const db = new sqlite3.Database(dbPath);
 
-// Initialize DB
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS products (
     id TEXT PRIMARY KEY,
@@ -42,12 +68,13 @@ db.serialize(() => {
     name TEXT NOT NULL,
     price REAL NOT NULL,
     quantity INTEGER NOT NULL,
-    FOREIGN KEY (sale_id) REFERENCES sales (id),
-    FOREIGN KEY (product_id) REFERENCES products (id)
+    FOREIGN KEY (sale_id) REFERENCES sales(id),
+    FOREIGN KEY (product_id) REFERENCES products(id)
   )`);
 
-  // Insert sample data if empty
+  // Insert sample products if empty
   db.get("SELECT COUNT(*) as count FROM products", (err, row) => {
+    if (err) return console.error(err.message);
     if (row.count === 0) {
       const sampleProducts = [
         { id: '1', name: 'Coffee', description: 'Hot brewed coffee', category: 'Beverage', price: 2.99, quantity: 50 },
@@ -56,11 +83,8 @@ db.serialize(() => {
       ];
 
       const insertProduct = db.prepare(`INSERT INTO products (id, name, description, category, price, quantity) VALUES (?, ?, ?, ?, ?, ?)`);
-      sampleProducts.forEach(product => {
-        insertProduct.run(product.id, product.name, product.description, product.category, product.price, product.quantity);
-      });
+      sampleProducts.forEach(p => insertProduct.run(p.id, p.name, p.description, p.category, p.price, p.quantity));
       insertProduct.finalize();
-
       console.log('Database initialized with sample data');
     }
   });
@@ -101,24 +125,22 @@ app.post('/api/sales', (req, res) => {
     if (err) return res.status(500).json({ error: err.message });
 
     const insertItem = db.prepare(`INSERT INTO sale_items (sale_id, product_id, name, price, quantity) VALUES (?, ?, ?, ?, ?)`);
-    items.forEach(item => {
-      insertItem.run(id, item.product_id, item.name, item.price, item.quantity);
-    });
+    items.forEach(item => insertItem.run(id, item.product_id, item.name, item.price, item.quantity));
     insertItem.finalize();
 
     res.json({ success: true, id });
   });
 });
 
-// Start server
+// --- Start Server ---
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-// Graceful shutdown
+// --- Graceful Shutdown ---
 process.on('SIGINT', () => {
   console.log('Shutting down server...');
-  db.close((err) => {
+  db.close(err => {
     if (err) console.error(err.message);
     console.log('Database connection closed.');
     process.exit(0);
