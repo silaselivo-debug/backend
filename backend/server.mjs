@@ -44,52 +44,6 @@ app.use(bodyParser.json());
 const dbPath = path.join(__dirname, 'database.sqlite');
 const db = new sqlite3.Database(dbPath);
 
-db.serialize(() => {
-  db.run(`CREATE TABLE IF NOT EXISTS products (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
-    category TEXT NOT NULL,
-    price REAL NOT NULL,
-    quantity INTEGER NOT NULL
-  )`);
-
-  db.run(`CREATE TABLE IF NOT EXISTS sales (
-    id TEXT PRIMARY KEY,
-    date TEXT NOT NULL,
-    customer TEXT NOT NULL,
-    total REAL NOT NULL
-  )`);
-
-  db.run(`CREATE TABLE IF NOT EXISTS sale_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    sale_id TEXT NOT NULL,
-    product_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    price REAL NOT NULL,
-    quantity INTEGER NOT NULL,
-    FOREIGN KEY (sale_id) REFERENCES sales(id),
-    FOREIGN KEY (product_id) REFERENCES products(id)
-  )`);
-
-  // Insert sample products if empty
-  db.get("SELECT COUNT(*) as count FROM products", (err, row) => {
-    if (err) return console.error(err.message);
-    if (row.count === 0) {
-      const sampleProducts = [
-        { id: '1', name: 'Coffee', description: 'Hot brewed coffee', category: 'Beverage', price: 2.99, quantity: 50 },
-        { id: '2', name: 'Sandwich', description: 'Fresh deli sandwich', category: 'Food', price: 5.99, quantity: 25 },
-        { id: '3', name: 'Cake', description: 'Chocolate cake slice', category: 'Dessert', price: 3.99, quantity: 15 }
-      ];
-
-      const insertProduct = db.prepare(`INSERT INTO products (id, name, description, category, price, quantity) VALUES (?, ?, ?, ?, ?, ?)`);
-      sampleProducts.forEach(p => insertProduct.run(p.id, p.name, p.description, p.category, p.price, p.quantity));
-      insertProduct.finalize();
-      console.log('Database initialized with sample data');
-    }
-  });
-});
-
 // --- API Routes ---
 
 // Get all products
