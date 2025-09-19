@@ -5,11 +5,30 @@ const bodyParser = require('body-parser');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
-app.use(cors());
+// ---------------- Allowed Origins ----------------
+const allowedOrigins = [
+  process.env.FRONTEND_URL,                 // for environment config
+  'https://boity.vercel.app/',           // your Vercel frontend
+  'https://backend-054e.onrender.com',        // your Render backend
+  'http://localhost:5174',                  // local dev (vite)
+  'http://localhost:5173',                  // local dev (vite alt port)
+  'https://iwb-server.onrender.com/auth/g'  // special auth route
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true
+}));
+
 app.use(bodyParser.json());
 
-// In-memory data storage
+// ---------------- In-memory data storage ----------------
 let products = [
   {
     id: '1',
@@ -40,7 +59,7 @@ let products = [
 let sales = [];
 let saleItems = [];
 
-// Routes
+// ---------------- Routes ----------------
 
 // Get all products
 app.get('/api/products', (req, res) => {
@@ -59,11 +78,11 @@ app.get('/api/products/:id', (req, res) => {
 // Create a new product
 app.post('/api/products', (req, res) => {
   const { name, description, category, price, quantity } = req.body;
-  
+
   if (!name || !category || !price || !quantity) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
-  
+
   const newProduct = {
     id: Date.now().toString(),
     name,
@@ -72,7 +91,7 @@ app.post('/api/products', (req, res) => {
     price,
     quantity
   };
-  
+
   products.push(newProduct);
   res.status(201).json(newProduct);
 });
@@ -81,12 +100,12 @@ app.post('/api/products', (req, res) => {
 app.put('/api/products/:id', (req, res) => {
   const { id } = req.params;
   const { name, description, category, price, quantity } = req.body;
-  
+
   const productIndex = products.findIndex(p => p.id === id);
   if (productIndex === -1) {
     return res.status(404).json({ error: 'Product not found' });
   }
-  
+
   products[productIndex] = {
     ...products[productIndex],
     name,
@@ -95,7 +114,7 @@ app.put('/api/products/:id', (req, res) => {
     price,
     quantity
   };
-  
+
   res.json({ message: 'Product updated successfully' });
 });
 
@@ -103,13 +122,13 @@ app.put('/api/products/:id', (req, res) => {
 app.delete('/api/products/:id', (req, res) => {
   const { id } = req.params;
   const initialLength = products.length;
-  
+
   products = products.filter(p => p.id !== id);
-  
+
   if (products.length === initialLength) {
     return res.status(404).json({ error: 'Product not found' });
   }
-  
+
   res.json({ message: 'Product deleted successfully' });
 });
 
@@ -119,7 +138,7 @@ app.get('/api/sales', (req, res) => {
     ...sale,
     items: saleItems.filter(item => item.sale_id === sale.id)
   }));
-  
+
   res.json(salesWithItems.sort((a, b) => new Date(b.date) - new Date(a.date)));
 });
 
@@ -127,34 +146,30 @@ app.get('/api/sales', (req, res) => {
 app.post('/api/sales', (req, res) => {
   try {
     const { customer, items } = req.body;
-    
+
     if (!items || items.length === 0) {
       return res.status(400).json({ error: 'Sale must have at least one item' });
     }
-    
+
     const saleId = Date.now().toString();
     const date = new Date().toISOString();
     const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     const customerName = customer || 'Walk-in Customer';
-    
-    // Process sale items and update product quantities
+
     for (const item of items) {
-      // Support both item.id and item.productId for compatibility
       const productId = item.id || item.productId;
       const product = products.find(p => p.id === productId);
-      
+
       if (!product) {
         return res.status(404).json({ error: `Product ${productId} not found` });
       }
-      
+
       if (product.quantity < item.quantity) {
         return res.status(400).json({ error: `Insufficient quantity for ${product.name}` });
       }
-      
-      // Update product quantity
+
       product.quantity -= item.quantity;
-      
-      // Add sale item
+
       saleItems.push({
         sale_id: saleId,
         product_id: productId,
@@ -163,17 +178,16 @@ app.post('/api/sales', (req, res) => {
         quantity: item.quantity
       });
     }
-    
-    // Record the sale
+
     const newSale = {
       id: saleId,
       date,
       customer: customerName,
       total
     };
-    
+
     sales.push(newSale);
-    
+
     res.status(201).json({
       ...newSale,
       items: saleItems.filter(item => item.sale_id === saleId)
@@ -184,7 +198,7 @@ app.post('/api/sales', (req, res) => {
   }
 });
 
-// Start server
+// ---------------- Start server ----------------
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
