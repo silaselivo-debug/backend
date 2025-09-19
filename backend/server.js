@@ -125,55 +125,63 @@ app.get('/api/sales', (req, res) => {
 
 // Create a new sale
 app.post('/api/sales', (req, res) => {
-  const { customer, items } = req.body;
-  
-  if (!items || items.length === 0) {
-    return res.status(400).json({ error: 'Sale must have at least one item' });
-  }
-  
-  const saleId = Date.now().toString();
-  const date = new Date().toISOString();
-  const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const customerName = customer || 'Walk-in Customer';
-  
-  // Process sale items and update product quantities
-  for (const item of items) {
-    const product = products.find(p => p.id === item.productId);
-    if (!product) {
-      return res.status(404).json({ error: `Product ${item.productId} not found` });
+  try {
+    const { customer, items } = req.body;
+    
+    if (!items || items.length === 0) {
+      return res.status(400).json({ error: 'Sale must have at least one item' });
     }
     
-    if (product.quantity < item.quantity) {
-      return res.status(400).json({ error: `Insufficient quantity for ${product.name}` });
+    const saleId = Date.now().toString();
+    const date = new Date().toISOString();
+    const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const customerName = customer || 'Walk-in Customer';
+    
+    // Process sale items and update product quantities
+    for (const item of items) {
+      // Support both item.id and item.productId for compatibility
+      const productId = item.id || item.productId;
+      const product = products.find(p => p.id === productId);
+      
+      if (!product) {
+        return res.status(404).json({ error: `Product ${productId} not found` });
+      }
+      
+      if (product.quantity < item.quantity) {
+        return res.status(400).json({ error: `Insufficient quantity for ${product.name}` });
+      }
+      
+      // Update product quantity
+      product.quantity -= item.quantity;
+      
+      // Add sale item
+      saleItems.push({
+        sale_id: saleId,
+        product_id: productId,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity
+      });
     }
     
-    // Update product quantity
-    product.quantity -= item.quantity;
+    // Record the sale
+    const newSale = {
+      id: saleId,
+      date,
+      customer: customerName,
+      total
+    };
     
-    // Add sale item
-    saleItems.push({
-      sale_id: saleId,
-      product_id: item.productId,
-      name: item.name,
-      price: item.price,
-      quantity: item.quantity
+    sales.push(newSale);
+    
+    res.status(201).json({
+      ...newSale,
+      items: saleItems.filter(item => item.sale_id === saleId)
     });
+  } catch (error) {
+    console.error('Error creating sale:', error);
+    res.status(500).json({ error: 'Failed to create sale' });
   }
-  
-  // Record the sale
-  const newSale = {
-    id: saleId,
-    date,
-    customer: customerName,
-    total
-  };
-  
-  sales.push(newSale);
-  
-  res.status(201).json({
-    ...newSale,
-    items
-  });
 });
 
 // Start server
